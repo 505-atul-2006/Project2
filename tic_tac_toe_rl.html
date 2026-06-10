@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic Tac Toe — Q-Learning AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',sans-serif;background:#f5f4f0;min-height:100vh;display:flex;justify-content:center;padding:2rem 1rem}
+  .wrap{max-width:680px;width:100%}
+  .header{display:flex;align-items:baseline;gap:12px;margin-bottom:1.5rem}
+  .title{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;color:#1a1a1a}
+  .sub{font-size:13px;color:#888}
+  .main{display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start}
+  @media(max-width:520px){.main{grid-template-columns:1fr}}
+  .panel{background:#fff;border:1px solid #e8e8e4;border-radius:12px;padding:1.25rem}
+  .panel-title{font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#aaa;margin-bottom:1rem}
+  .board{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:1rem}
+  .cell{aspect-ratio:1;background:#f5f4f0;border:1px solid #e8e8e4;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:28px;font-weight:700;cursor:pointer;transition:background .12s,transform .08s;user-select:none}
+  .cell:hover:not(.taken){background:#ececea;transform:scale(0.97)}
+  .cell.x{color:#533ab7}
+  .cell.o{color:#0f6e56}
+  .cell.win{background:#EEEDFE;border-color:#AFA9EC}
+  .cell.taken{cursor:default}
+  .status-bar{font-size:13px;font-weight:500;color:#888;text-align:center;min-height:20px;margin-bottom:1rem}
+  .status-bar.your-turn{color:#533ab7}
+  .status-bar.ai-turn{color:#0f6e56}
+  .status-bar.win-msg{color:#1a1a1a}
+  .btn-row{display:flex;gap:8px}
+  button{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:7px 14px;border-radius:8px;border:1px solid #ddd;background:transparent;color:#1a1a1a;cursor:pointer;transition:background .12s,transform .08s}
+  button:hover{background:#f5f4f0}
+  button:active{transform:scale(0.97)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1rem}
+  .stat{background:#f5f4f0;border-radius:8px;padding:.6rem .5rem;text-align:center}
+  .stat-val{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;color:#1a1a1a}
+  .stat-lbl{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .stat.win-stat .stat-val{color:#533ab7}
+  .stat.loss-stat .stat-val{color:#0f6e56}
+  .train-section{margin-bottom:1rem}
+  .train-row{display:flex;align-items:center;gap:10px;margin-bottom:.5rem}
+  .train-row label{font-size:13px;color:#555;min-width:90px}
+  input[type=range]{flex:1;accent-color:#533ab7}
+  .train-row span{font-family:'Space Mono',monospace;font-size:12px;color:#888;min-width:40px;text-align:right}
+  .progress-bar{height:4px;background:#eee;border-radius:2px;overflow:hidden;margin-top:.5rem}
+  .progress-fill{height:100%;background:#533ab7;width:0%;transition:width .1s;border-radius:2px}
+  .ep-label{font-size:11px;color:#aaa;margin-top:4px}
+  .q-info{font-size:11px;color:#aaa;margin-top:.75rem;line-height:1.6;border-top:1px solid #f0f0ec;padding-top:.75rem}
+  .mode-row{display:flex;gap:6px;margin-bottom:1rem}
+  .mode-btn{flex:1;font-size:12px;padding:6px 8px}
+  .mode-btn.active{background:#e8e4fc;border-color:#9b8de0;color:#3d2a9e}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <span class="title">TIC TAC TOE</span>
+    <span class="sub">vs Q-Learning AI</span>
+  </div>
+
+  <div class="main">
+    <div class="panel">
+      <div class="panel-title">Game</div>
+      <div class="status-bar" id="status">Choose your side to begin</div>
+      <div class="board" id="board">
+        <div class="cell" data-i="0"></div><div class="cell" data-i="1"></div><div class="cell" data-i="2"></div>
+        <div class="cell" data-i="3"></div><div class="cell" data-i="4"></div><div class="cell" data-i="5"></div>
+        <div class="cell" data-i="6"></div><div class="cell" data-i="7"></div><div class="cell" data-i="8"></div>
+      </div>
+      <div class="mode-row">
+        <button class="mode-btn active" id="play-x" onclick="chooseSide('X')">Play as X</button>
+        <button class="mode-btn" id="play-o" onclick="chooseSide('O')">Play as O</button>
+      </div>
+      <div class="btn-row">
+        <button onclick="newGame()" style="flex:1">New Game</button>
+        <button onclick="undoMove()" style="flex:1">Undo</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">AI Agent</div>
+      <div class="stats-grid">
+        <div class="stat win-stat"><div class="stat-val" id="w">0</div><div class="stat-lbl">You Win</div></div>
+        <div class="stat"><div class="stat-val" id="d">0</div><div class="stat-lbl">Draw</div></div>
+        <div class="stat loss-stat"><div class="stat-val" id="l">0</div><div class="stat-lbl">AI Wins</div></div>
+      </div>
+
+      <div class="train-section">
+        <div class="train-row">
+          <label>Explore (ε)</label>
+          <input type="range" id="eps-sl" min="0" max="100" value="10" step="1"
+            oninput="agent.epsilon=this.value/100;document.getElementById('eps-v').textContent=(this.value/100).toFixed(2)">
+          <span id="eps-v">0.10</span>
+        </div>
+        <div class="train-row">
+          <label>Learn rate (α)</label>
+          <input type="range" id="lr-sl" min="1" max="100" value="30" step="1"
+            oninput="agent.alpha=this.value/100;document.getElementById('lr-v').textContent=(this.value/100).toFixed(2)">
+          <span id="lr-v">0.30</span>
+        </div>
+        <div class="train-row">
+          <label>Episodes</label>
+          <input type="range" id="ep-sl" min="100" max="50000" value="5000" step="100"
+            oninput="document.getElementById('ep-v').textContent=this.value">
+          <span id="ep-v">5000</span>
+        </div>
+        <button onclick="trainAgent()" style="width:100%;margin-top:.5rem" id="train-btn">Train AI</button>
+        <div class="progress-bar"><div class="progress-fill" id="pbar"></div></div>
+        <div class="ep-label">States learned: <span id="states">0</span></div>
+      </div>
+
+      <div class="q-info">
+        Q-learning: agent stores Q(state,action) values. On each move it picks max Q action (or explores randomly with prob ε). Rewards: +1 win, −1 loss, +0.5 draw. α controls how fast values update.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const WINS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+// ── Q-Learning Agent ──────────────────────────────────────────────────────────
+class QAgent {
+  constructor() {
+    this.q = {};          // Q-table: key = "state|action" → value
+    this.epsilon = 0.10;  // exploration rate
+    this.alpha   = 0.30;  // learning rate
+    this.gamma   = 0.95;  // discount factor
+  }
+
+  key(board) { return board.join(''); }
+
+  getQ(state, a) { return this.q[state + '|' + a] ?? 0; }
+  setQ(state, a, v) { this.q[state + '|' + a] = v; }
+
+  // Pick an action: ε-greedy policy
+  choose(board, mark, eps = this.epsilon) {
+    const moves = empties(board);
+    if (!moves.length) return -1;
+    if (Math.random() < eps) return moves[Math.floor(Math.random() * moves.length)];
+    const s = this.key(board);
+    let best = -Infinity, bestM = moves[0];
+    for (const m of moves) {
+      const v = this.getQ(s, m);
+      if (v > best) { best = v; bestM = m; }
+    }
+    return bestM;
+  }
+
+  // Bellman update: Q(s,a) ← Q(s,a) + α*(r + γ*max_Q(s') - Q(s,a))
+  learn(state, action, reward, nextBoard) {
+    const ns    = this.key(nextBoard);
+    const moves = empties(nextBoard);
+    const maxNext = moves.length ? Math.max(...moves.map(a => this.getQ(ns, a))) : 0;
+    const old  = this.getQ(state, action);
+    this.setQ(state, action, old + this.alpha * (reward + this.gamma * maxNext - old));
+  }
+}
+
+// ── Board helpers ─────────────────────────────────────────────────────────────
+function empties(b) { return b.map((v, i) => v === '' ? i : -1).filter(i => i >= 0); }
+function checkWin(b, p) { return WINS.some(w => w.every(i => b[i] === p)); }
+function checkDraw(b) { return b.every(v => v !== '') && !checkWin(b,'X') && !checkWin(b,'O'); }
+function winLine(b, p) { return WINS.find(w => w.every(i => b[i] === p)) || null; }
+
+// ── Game state ────────────────────────────────────────────────────────────────
+const agent = new QAgent();
+let board      = Array(9).fill('');
+let playerMark = 'X';
+let aiMark     = 'O';
+let gameOver   = false;
+let history    = [];
+let scores     = { w: 0, d: 0, l: 0 };
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function chooseSide(side) {
+  playerMark = side;
+  aiMark     = side === 'X' ? 'O' : 'X';
+  document.getElementById('play-x').classList.toggle('active', side === 'X');
+  document.getElementById('play-o').classList.toggle('active', side === 'O');
+  newGame();
+}
+
+function newGame() {
+  board = Array(9).fill('');
+  history = [];
+  gameOver = false;
+  render();
+  setStatus('Your turn (' + playerMark + ')', 'your-turn');
+  if (aiMark === 'X') setTimeout(aiMove, 300);
+}
+
+function setStatus(msg, cls = '') {
+  const s = document.getElementById('status');
+  s.textContent = msg;
+  s.className = 'status-bar' + (cls ? ' ' + cls : '');
+}
+
+function render(winCells = []) {
+  document.querySelectorAll('.cell').forEach((c, i) => {
+    c.textContent = board[i];
+    c.className = 'cell'
+      + (board[i] ? ' taken ' + board[i].toLowerCase() : '')
+      + (winCells.includes(i) ? ' win' : '');
+  });
+}
+
+// ── Player move ───────────────────────────────────────────────────────────────
+function handleClick(i) {
+  if (gameOver || board[i] !== '') return;
+  if (aiMark === 'X' && !gameOver && board.every(v => v === '')) return; // wait for AI first move
+  history.push([...board]);
+  board[i] = playerMark;
+  render();
+  if (checkWin(board, playerMark)) { endGame('You win! 🎉', true, 'w'); return; }
+  if (checkDraw(board))            { endGame('Draw!', false, 'd');        return; }
+  setStatus('AI thinking…', 'ai-turn');
+  setTimeout(aiMove, 250);
+}
+
+// ── AI move ───────────────────────────────────────────────────────────────────
+function aiMove() {
+  if (gameOver) return;
+  const m = agent.choose(board, aiMark, agent.epsilon);
+  if (m === -1) return;
+  history.push([...board]);
+  board[m] = aiMark;
+  render();
+  if (checkWin(board, aiMark)) { endGame('AI wins! 🤖', true, 'l'); return; }
+  if (checkDraw(board))        { endGame('Draw!', false, 'd');       return; }
+  setStatus('Your turn (' + playerMark + ')', 'your-turn');
+}
+
+// ── End game ──────────────────────────────────────────────────────────────────
+function endGame(msg, hasWinner, result) {
+  gameOver = true;
+  if (hasWinner) {
+    const mark  = result === 'w' ? playerMark : aiMark;
+    const wl    = winLine(board, mark) || [];
+    render(wl);
+  }
+  scores[result]++;
+  document.getElementById('w').textContent = scores.w;
+  document.getElementById('d').textContent = scores.d;
+  document.getElementById('l').textContent = scores.l;
+  setStatus(msg, 'win-msg');
+}
+
+// ── Undo ──────────────────────────────────────────────────────────────────────
+function undoMove() {
+  if (gameOver && history.length) {
+    board = [...history.pop()];
+    if (history.length) { board = [...history[history.length - 1]]; history.pop(); }
+    gameOver = false; render();
+    setStatus('Your turn (' + playerMark + ')', 'your-turn');
+    return;
+  }
+  if (history.length >= 2) {
+    history.pop();
+    board = [...history[history.length - 1]]; history.pop();
+    render();
+    setStatus('Your turn (' + playerMark + ')', 'your-turn');
+  }
+}
+
+// ── Self-play training episode ────────────────────────────────────────────────
+function selfPlay(b, eps) {
+  let board = [...b];
+  let steps = [];
+  let cur   = 'X';
+  while (true) {
+    const s = agent.key(board);
+    const m = agent.choose(board, cur, eps);
+    if (m === -1) break;
+    steps.push({ s, a: m, mark: cur, board: [...board] });
+    board[m] = cur;
+    if (checkWin(board, cur)) {
+      // Winner gets +1, loser gets -1
+      for (const step of steps) {
+        const r = step.mark === cur ? 1 : -1;
+        agent.learn(step.s, step.a, r, board);
+      }
+      return;
+    }
+    if (checkDraw(board)) {
+      for (const step of steps) agent.learn(step.s, step.a, 0.5, board);
+      return;
+    }
+    cur = cur === 'X' ? 'O' : 'X';
+  }
+}
+
+// ── Training loop (async chunked to avoid blocking UI) ────────────────────────
+function trainAgent() {
+  const eps = parseInt(document.getElementById('ep-sl').value);
+  const btn = document.getElementById('train-btn');
+  btn.disabled = true; btn.textContent = 'Training…';
+  let i = 0;
+  const chunk = 200;
+  function step() {
+    const end = Math.min(i + chunk, eps);
+    for (; i < end; i++) selfPlay(Array(9).fill(''), 0.3);
+    document.getElementById('pbar').style.width = (i / eps * 100) + '%';
+    document.getElementById('states').textContent = Object.keys(agent.q).length;
+    if (i < eps) { requestAnimationFrame(step); }
+    else {
+      btn.disabled = false; btn.textContent = 'Train AI';
+      document.getElementById('pbar').style.width = '100%';
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// ── Event listeners ───────────────────────────────────────────────────────────
+document.getElementById('board').addEventListener('click', e => {
+  const cell = e.target.closest('.cell');
+  if (cell) handleClick(+cell.dataset.i);
+});
+
+// Auto-train on load
+trainAgent();
+</script>
+</body>
+</html>
